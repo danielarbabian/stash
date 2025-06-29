@@ -38,15 +38,11 @@ impl InputHandler for App {
                 self.load_existing_notes();
                 self.status_message = Some("Notes refreshed".to_string());
             }
-            KeyCode::Up => {
-                if self.selected_note > 0 {
-                    self.selected_note -= 1;
-                }
+            KeyCode::Up | KeyCode::Char('k') => {
+                self.previous_note();
             }
-            KeyCode::Down => {
-                if self.selected_note < self.notes.len().saturating_sub(1) {
-                    self.selected_note += 1;
-                }
+            KeyCode::Down | KeyCode::Char('j') => {
+                self.next_note();
             }
             KeyCode::Enter => {
                 if !self.notes.is_empty() && self.selected_note < self.notes.len() {

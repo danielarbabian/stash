@@ -8,6 +8,7 @@ use crossterm::{
 use ratatui::{
     backend::CrosstermBackend,
     Frame, Terminal,
+    widgets::ListState,
 };
 use tui_textarea::TextArea;
 
@@ -22,6 +23,7 @@ pub struct App {
     pub editor_mode: EditorMode,
     pub notes: Vec<Note>,
     pub selected_note: usize,
+    pub notes_list_state: ListState,
     pub content_editor: TextArea<'static>,
     pub title_input: String,
     pub active_field: ActiveField,
@@ -34,12 +36,15 @@ pub struct App {
 impl Default for App {
     fn default() -> App {
         let content_editor = TextArea::default();
+        let mut notes_list_state = ListState::default();
+        notes_list_state.select(Some(0));
 
         App {
             mode: AppMode::Home,
             editor_mode: EditorMode::Command,
             notes: Vec::new(),
             selected_note: 0,
+            notes_list_state,
             content_editor,
             title_input: String::new(),
             active_field: ActiveField::Content,
@@ -79,6 +84,31 @@ impl App {
                 }
                 self.notes.sort_by(|a, b| b.created.cmp(&a.created));
             }
+        }
+
+        self.selected_note = 0;
+        if !self.notes.is_empty() {
+            self.notes_list_state.select(Some(0));
+        } else {
+            self.notes_list_state.select(None);
+        }
+    }
+
+    pub fn next_note(&mut self) {
+        if !self.notes.is_empty() {
+            self.selected_note = (self.selected_note + 1) % self.notes.len();
+            self.notes_list_state.select(Some(self.selected_note));
+        }
+    }
+
+    pub fn previous_note(&mut self) {
+        if !self.notes.is_empty() {
+            if self.selected_note == 0 {
+                self.selected_note = self.notes.len() - 1;
+            } else {
+                self.selected_note -= 1;
+            }
+            self.notes_list_state.select(Some(self.selected_note));
         }
     }
 

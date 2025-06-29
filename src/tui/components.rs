@@ -85,7 +85,7 @@ impl Renderer for App {
                 Span::raw(" help   "),
                 Span::styled("r", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
                 Span::raw(" refresh   "),
-                Span::styled("↑↓", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+                Span::styled("↑↓/jk", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
                 Span::raw(" navigate   "),
                 Span::styled("q", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
                 Span::raw(" quit"),
@@ -100,7 +100,7 @@ impl Renderer for App {
 
         let notes_block = Block::default()
             .borders(Borders::ALL)
-            .title(format!("Notes ({})", self.notes.len()));
+            .title(format!("Notes ({}) - Scroll with ↑↓ or j/k", self.notes.len()));
 
         if self.notes.is_empty() {
             let empty_message = Paragraph::new("No notes found. Press 'a' to create your first note!")
@@ -120,18 +120,38 @@ impl Renderer for App {
                         note.content.replace('\n', " ")
                     };
 
-                    let style = if i == self.selected_note {
-                        Style::default().bg(Color::Blue).fg(Color::White)
+                    let is_selected = i == self.selected_note;
+
+                    let title_style = if is_selected {
+                        Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
                     } else {
-                        Style::default()
+                        Style::default().add_modifier(Modifier::BOLD)
+                    };
+
+                    let preview_style = if is_selected {
+                        Style::default().fg(Color::White)
+                    } else {
+                        Style::default().fg(Color::DarkGray)
+                    };
+
+                    let tags_style = if is_selected {
+                        Style::default().fg(Color::LightCyan)
+                    } else {
+                        Style::default().fg(Color::Blue)
+                    };
+
+                    let projects_style = if is_selected {
+                        Style::default().fg(Color::LightGreen)
+                    } else {
+                        Style::default().fg(Color::Green)
                     };
 
                     let mut lines = vec![
                         Line::from(vec![
-                            Span::styled(format!("▶ {}", title), style.add_modifier(Modifier::BOLD)),
+                            Span::styled(format!("▶ {}", title), title_style),
                         ]),
                         Line::from(vec![
-                            Span::styled(format!("  {}", preview), style.fg(Color::DarkGray)),
+                            Span::styled(format!("  {}", preview), preview_style),
                         ]),
                     ];
 
@@ -141,7 +161,7 @@ impl Renderer for App {
                             .collect::<Vec<_>>()
                             .join(" ");
                         lines.push(Line::from(vec![
-                            Span::styled(format!("  🏷️  {}", tags_text), style.fg(Color::Blue)),
+                            Span::styled(format!("  🏷️  {}", tags_text), tags_style),
                         ]));
                     }
 
@@ -152,7 +172,7 @@ impl Renderer for App {
                             .collect::<Vec<_>>()
                             .join(" ");
                         lines.push(Line::from(vec![
-                            Span::styled(format!("  📁 {}", projects_text), style.fg(Color::Green)),
+                            Span::styled(format!("  📁 {}", projects_text), projects_style),
                         ]));
                     }
 
@@ -164,9 +184,10 @@ impl Renderer for App {
 
             let list = List::new(items)
                 .block(notes_block)
-                .highlight_style(Style::default().bg(Color::Blue));
+                .highlight_style(Style::default().bg(Color::Blue).add_modifier(Modifier::BOLD))
+                .highlight_symbol("► ");
 
-            f.render_widget(list, chunks[1]);
+            f.render_stateful_widget(list, chunks[1], &mut self.notes_list_state);
         }
     }
 
@@ -313,7 +334,7 @@ impl Renderer for App {
             Line::from("  • stash search --list-projects - See all projects"),
             Line::from(""),
             Line::from("⌨️  TUI Controls:"),
-            Line::from("  Home: a=add, h=help, r=refresh, ↑↓=navigate, q=quit"),
+            Line::from("  Home: a=add, h=help, r=refresh, ↑↓/jk=navigate, q=quit"),
             Line::from("  Add Note: t=edit title, c=edit content, s=save, q=quit"),
             Line::from("  Editor: i=insert mode, Esc=command mode"),
             Line::from(""),
