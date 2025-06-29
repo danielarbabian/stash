@@ -416,7 +416,7 @@ impl App {
         let title_active = matches!(self.active_field, ActiveField::Title);
         let title_style = if title_active {
             match self.editor_mode {
-                EditorMode::Insert => Style::default().fg(Color::Green),
+                EditorMode::Insert => Style::default().fg(Color::Cyan),
                 EditorMode::Command => Style::default().fg(Color::Yellow),
             }
         } else {
@@ -436,7 +436,7 @@ impl App {
         let content_active = matches!(self.active_field, ActiveField::Content);
         let content_style = if content_active {
             match self.editor_mode {
-                EditorMode::Insert => Style::default().fg(Color::Green),
+                EditorMode::Insert => Style::default().fg(Color::Cyan),
                 EditorMode::Command => Style::default().fg(Color::Yellow),
             }
         } else {
@@ -466,7 +466,7 @@ impl App {
             .block(Block::default().borders(Borders::ALL))
             .alignment(Alignment::Center)
             .style(match self.editor_mode {
-                EditorMode::Insert => Style::default().fg(Color::Green),
+                EditorMode::Insert => Style::default().fg(Color::Cyan),
                 EditorMode::Command => Style::default().fg(Color::Yellow),
             });
 

@@ -24,5 +24,10 @@ fn main() {
         Commands::New => {
             println!("creating new stash...");
         },
+        Commands::Search { query } => {
+            if let Err(e) = store::search_notes(&query) {
+                eprintln!("search error: {}", e);
+            }
+        },
     }
 }

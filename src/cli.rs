@@ -18,4 +18,8 @@ pub enum Commands {
         content: String,
     },
     New,
+    Search {
+        #[arg(help = "The search query")]
+        query: String,
+    },
 }
