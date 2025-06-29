@@ -10,6 +10,8 @@ pub struct Note {
     pub id: Uuid,
     pub title: Option<String>,
     pub tags: Vec<String>,
+    #[serde(default)]
+    pub projects: Vec<String>,
     pub links_to: Vec<Uuid>,
     pub created: DateTime<Utc>,
     pub updated: Option<DateTime<Utc>>,
@@ -22,6 +24,8 @@ struct NoteFrontMatter {
     pub id: Uuid,
     pub title: Option<String>,
     pub tags: Vec<String>,
+    #[serde(default)]
+    pub projects: Vec<String>,
     pub links_to: Vec<Uuid>,
     pub created: DateTime<Utc>,
     pub updated: Option<DateTime<Utc>>,
@@ -62,6 +66,7 @@ impl Note {
             id: frontmatter.id,
             title: frontmatter.title,
             tags: frontmatter.tags,
+            projects: frontmatter.projects,
             links_to: frontmatter.links_to,
             created: frontmatter.created,
             updated: frontmatter.updated,
@@ -77,6 +82,7 @@ impl Note {
             id: self.id,
             title: self.title.clone(),
             tags: self.tags.clone(),
+            projects: self.projects.clone(),
             links_to: self.links_to.clone(),
             created: self.created,
             updated: self.updated,

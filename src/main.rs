@@ -24,8 +24,17 @@ fn main() {
         Commands::New => {
             println!("creating new stash...");
         },
-        Commands::Search { query } => {
-            if let Err(e) = store::search_notes(&query) {
+        Commands::Search { query, tags, projects, list_tags, list_projects, case_sensitive } => {
+            let search_options = store::SearchOptions {
+                query,
+                filter_tags: tags,
+                filter_projects: projects,
+                list_tags,
+                list_projects,
+                case_sensitive,
+            };
+
+            if let Err(e) = store::search_notes_advanced(search_options) {
                 eprintln!("search error: {}", e);
             }
         },
