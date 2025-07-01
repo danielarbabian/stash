@@ -1,7 +1,7 @@
 use crossterm::event::{KeyCode, KeyModifiers};
 
 use super::app::App;
-use super::state::{AppMode, EditorMode, ActiveField};
+use super::state::{AppMode, EditorMode, ActiveField, AiState};
 
 pub trait InputHandler {
     fn handle_input(&mut self, key: KeyCode, modifiers: KeyModifiers);
@@ -9,15 +9,21 @@ pub trait InputHandler {
     fn handle_add_note_input(&mut self, key: KeyCode, modifiers: KeyModifiers);
     fn handle_view_note_input(&mut self, key: KeyCode);
     fn handle_help_input(&mut self, key: KeyCode);
+    fn handle_settings_input(&mut self, key: KeyCode, modifiers: KeyModifiers);
+    fn handle_ai_rewrite_input(&mut self, key: KeyCode);
+    fn handle_ai_command_input(&mut self, key: KeyCode, modifiers: KeyModifiers);
 }
 
 impl InputHandler for App {
     fn handle_input(&mut self, key: KeyCode, modifiers: KeyModifiers) {
-        match self.mode {
+        match self.mode.clone() {
             AppMode::Home => self.handle_home_input(key),
             AppMode::AddNote => self.handle_add_note_input(key, modifiers),
             AppMode::ViewNote(_) => self.handle_view_note_input(key),
             AppMode::Help => self.handle_help_input(key),
+            AppMode::Settings => self.handle_settings_input(key, modifiers),
+            AppMode::AiRewrite { .. } => self.handle_ai_rewrite_input(key),
+            AppMode::AiCommand { .. } => self.handle_ai_command_input(key, modifiers),
         }
     }
 
@@ -34,9 +40,29 @@ impl InputHandler for App {
                 self.extracted_projects.clear();
             }
             KeyCode::Char('h') => self.mode = AppMode::Help,
+            KeyCode::Char('s') => {
+                self.mode = AppMode::Settings;
+                self.active_field = ActiveField::ApiKey;
+                self.api_key_input.clear();
+                if let Some(ref custom_prompt) = self.config.custom_ai_prompt {
+                    self.custom_prompt_input = custom_prompt.clone();
+                } else {
+                    self.custom_prompt_input.clear();
+                }
+            }
+            KeyCode::Char('c') => {
+                self.mode = AppMode::AiCommand {
+                    natural_input: String::new(),
+                    generated_command: None,
+                    command_results: None,
+                    awaiting_confirmation: false
+                };
+                self.ai_command_input.clear();
+                self.ai_state = AiState::Idle;
+            }
             KeyCode::Char('r') => {
                 self.load_existing_notes();
-                self.status_message = Some("Notes refreshed".to_string());
+                self.status_message = Some("notes refreshed".to_string());
             }
             KeyCode::Up | KeyCode::Char('k') => {
                 self.previous_note();
@@ -78,6 +104,12 @@ impl InputHandler for App {
                                     _ => {}
                                 }
                             }
+                            ActiveField::ApiKey => {
+                                // apikey field should not be active in addnote mode
+                            }
+                            ActiveField::PromptStyle | ActiveField::CustomPrompt => {
+                                // prompt fields should not be active in addnote mode
+                            }
                         }
                     }
                 }
@@ -94,6 +126,9 @@ impl InputHandler for App {
                     }
                     KeyCode::Char('s') => {
                         self.save_note();
+                    }
+                    KeyCode::Char('r') => {
+                        self.start_ai_rewrite_draft();
                     }
                     KeyCode::Char('i') => {
                         self.editor_mode = EditorMode::Insert;
@@ -117,6 +152,11 @@ impl InputHandler for App {
             KeyCode::Esc | KeyCode::Char('q') => {
                 self.mode = AppMode::Home;
             }
+            KeyCode::Char('r') => {
+                if let AppMode::ViewNote(note_id) = self.mode {
+                    self.start_ai_rewrite(note_id);
+                }
+            }
             _ => {}
         }
     }
@@ -127,6 +167,146 @@ impl InputHandler for App {
                 self.mode = AppMode::Home;
             }
             _ => {}
+        }
+    }
+
+    fn handle_settings_input(&mut self, key: KeyCode, _modifiers: KeyModifiers) {
+        match key {
+            KeyCode::Esc => {
+                self.mode = AppMode::Home;
+                self.api_key_input.clear();
+                self.custom_prompt_input.clear();
+            }
+            KeyCode::Enter => {
+                match self.active_field {
+                    ActiveField::ApiKey => {
+                        if !self.api_key_input.trim().is_empty() {
+                            if let Err(_) = self.set_api_key(self.api_key_input.clone()) {
+                                self.status_message = Some("failed to save api key".to_string());
+                            } else {
+                                if let Err(e) = self.save_prompt_settings() {
+                                    self.status_message = Some(e);
+                                } else {
+                                    self.mode = AppMode::Home;
+                                    self.api_key_input.clear();
+                                    self.custom_prompt_input.clear();
+                                }
+                            }
+                        }
+                    }
+                    ActiveField::PromptStyle | ActiveField::CustomPrompt => {
+                        if let Err(e) = self.save_prompt_settings() {
+                            self.status_message = Some(e);
+                        } else {
+                            self.status_message = Some("settings saved successfully".to_string());
+                            self.mode = AppMode::Home;
+                            self.api_key_input.clear();
+                            self.custom_prompt_input.clear();
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            KeyCode::Tab => {
+                self.active_field = match self.active_field {
+                    ActiveField::ApiKey => ActiveField::PromptStyle,
+                    ActiveField::PromptStyle => ActiveField::CustomPrompt,
+                    ActiveField::CustomPrompt => ActiveField::ApiKey,
+                    _ => ActiveField::ApiKey,
+                };
+            }
+            KeyCode::Up => {
+                if let ActiveField::PromptStyle = self.active_field {
+                    self.previous_prompt_style();
+                }
+            }
+            KeyCode::Down => {
+                if let ActiveField::PromptStyle = self.active_field {
+                    self.next_prompt_style();
+                }
+            }
+            KeyCode::Char(c) => {
+                match self.active_field {
+                    ActiveField::ApiKey => {
+                        self.api_key_input.push(c);
+                    }
+                    ActiveField::CustomPrompt => {
+                        self.custom_prompt_input.push(c);
+                    }
+                    _ => {}
+                }
+            }
+            KeyCode::Backspace => {
+                match self.active_field {
+                    ActiveField::ApiKey => {
+                        self.api_key_input.pop();
+                    }
+                    ActiveField::CustomPrompt => {
+                        self.custom_prompt_input.pop();
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn handle_ai_rewrite_input(&mut self, key: KeyCode) {
+        match key {
+            KeyCode::Esc => {
+                self.reject_ai_rewrite();
+            }
+            KeyCode::Enter => {
+                if let AiState::Success = self.ai_state {
+                    self.accept_ai_rewrite();
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn handle_ai_command_input(&mut self, key: KeyCode, _modifiers: KeyModifiers) {
+        if let AppMode::AiCommand { awaiting_confirmation, .. } = &self.mode {
+            if *awaiting_confirmation {
+                // We're in confirmation mode - waiting for user to approve/reject the generated command
+                match key {
+                    KeyCode::Enter => {
+                        self.execute_ai_command();
+                    }
+                    KeyCode::Esc => {
+                        self.cancel_ai_command();
+                    }
+                    _ => {}
+                }
+            } else if matches!(self.ai_state, AiState::Processing) {
+                // We're processing - only allow cancel
+                match key {
+                    KeyCode::Esc => {
+                        self.cancel_ai_command();
+                    }
+                    _ => {}
+                }
+            } else {
+                // We're in input mode - typing the natural language query
+                match key {
+                    KeyCode::Esc => {
+                        self.cancel_ai_command();
+                    }
+                    KeyCode::Enter => {
+                        if !self.ai_command_input.trim().is_empty() {
+                            let input = self.ai_command_input.clone();
+                            self.start_ai_command(input);
+                        }
+                    }
+                    KeyCode::Char(c) => {
+                        self.ai_command_input.push(c);
+                    }
+                    KeyCode::Backspace => {
+                        self.ai_command_input.pop();
+                    }
+                    _ => {}
+                }
+            }
         }
     }
 }

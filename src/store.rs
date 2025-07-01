@@ -14,11 +14,11 @@ use crate::models::{Note, NoteError};
 
 #[derive(Error, Debug)]
 pub enum StoreError {
-    #[error("IO error: {0}")]
+    #[error("io error: {0}")]
     Io(#[from] std::io::Error),
-    #[error("Home directory not found")]
+    #[error("home directory not found")]
     HomeNotFound,
-    #[error("Note error: {0}")]
+    #[error("note error: {0}")]
     Note(#[from] NoteError),
 }
 
@@ -34,6 +34,7 @@ pub struct SearchResult {
 }
 
 #[derive(Debug)]
+#[derive(Clone)]
 pub struct SearchOptions {
     pub query: String,
     pub filter_tags: Option<String>,
@@ -56,33 +57,46 @@ pub fn search_notes_advanced(options: SearchOptions) -> Result<(), StoreError> {
     let stash_dir = get_stash_notes_dir()?;
 
     if !stash_dir.exists() {
-        println!("No stash directory found at {:?}", stash_dir);
-        println!("Try creating some notes first with 'stash add \"your note content\"'");
+        println!("no stash directory found at {:?}", stash_dir);
+        println!("try creating some notes first with 'stash add \"your note content\"'");
         return Ok(());
     }
 
-    let all_notes = load_all_notes(&stash_dir)?;
-
-    if options.list_tags {
-        display_all_tags(&all_notes);
-        return Ok(());
-    }
-
-    if options.list_projects {
-        display_all_projects(&all_notes);
-        return Ok(());
-    }
-
-    let parsed_query = parse_search_query(&options.query);
-    let results = find_matching_notes_advanced(&all_notes, &parsed_query, &options)?;
+    let results = search_notes_return_results(options.clone())?;
 
     if results.is_empty() {
+        let parsed_query = parse_search_query(&options.query);
         display_no_results_help(&options.query, &parsed_query);
         return Ok(());
     }
 
     display_search_results_advanced(&results, &options)?;
     Ok(())
+}
+
+pub fn search_notes_return_results(options: SearchOptions) -> Result<Vec<SearchResult>, StoreError> {
+    let stash_dir = get_stash_notes_dir()?;
+
+    if !stash_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let all_notes = load_all_notes(&stash_dir)?;
+
+    if options.list_tags {
+        display_all_tags(&all_notes);
+        return Ok(Vec::new());
+    }
+
+    if options.list_projects {
+        display_all_projects(&all_notes);
+        return Ok(Vec::new());
+    }
+
+    let parsed_query = parse_search_query(&options.query);
+    let results = find_matching_notes_advanced(&all_notes, &parsed_query, &options)?;
+
+    Ok(results)
 }
 
 fn load_all_notes(stash_dir: &PathBuf) -> Result<Vec<(Note, PathBuf)>, StoreError> {
@@ -291,8 +305,8 @@ fn display_all_tags(notes: &[(Note, PathBuf)]) {
     }
 
     if tag_counts.is_empty() {
-        println!("No tags found in your notes.");
-        println!("Add tags to your notes using #tagname syntax.");
+        println!("no tags found in your notes.");
+        println!("add tags to your notes using #tagname syntax.");
         return;
     }
 
@@ -302,7 +316,7 @@ fn display_all_tags(notes: &[(Note, PathBuf)]) {
     let tag_style = Style::new().bold().cyan();
     let count_style = Style::new().dim();
 
-    println!("\n{} Available Tags:", tag_style.apply_to("📋"));
+    println!("\n{} available tags:", tag_style.apply_to("📋"));
     println!("{}", "─".repeat(50));
 
     for (tag, count) in sorted_tags {
@@ -312,11 +326,11 @@ fn display_all_tags(notes: &[(Note, PathBuf)]) {
         );
     }
 
-    println!("\n💡 Usage examples:");
-    println!("  stash search \"#rust\"           - Find notes with rust tag");
-    println!("  stash search \"#rust #web\"      - Find notes with both tags");
-    println!("  stash search \"#rust -#old\"     - Find rust notes, exclude old ones");
-    println!("  stash search --tags rust,web    - Filter by specific tags");
+    println!("\n💡 usage examples:");
+    println!("  stash search \"#rust\"           - find notes with rust tag");
+    println!("  stash search \"#rust #web\"      - find notes with both tags");
+    println!("  stash search \"#rust -#old\"     - find rust notes, exclude old ones");
+    println!("  stash search --tags rust,web    - filter by specific tags");
 }
 
 fn display_all_projects(notes: &[(Note, PathBuf)]) {
@@ -330,8 +344,8 @@ fn display_all_projects(notes: &[(Note, PathBuf)]) {
     }
 
     if project_counts.is_empty() {
-        println!("No projects found in your notes.");
-        println!("Add projects to your notes using +projectname syntax.");
+        println!("no projects found in your notes.");
+        println!("add projects to your notes using +projectname syntax.");
         return;
     }
 
@@ -341,7 +355,7 @@ fn display_all_projects(notes: &[(Note, PathBuf)]) {
     let project_style = Style::new().bold().green();
     let count_style = Style::new().dim();
 
-    println!("\n{} Available Projects:", project_style.apply_to("📁"));
+    println!("\n{} available projects:", project_style.apply_to("📁"));
     println!("{}", "─".repeat(50));
 
     for (project, count) in sorted_projects {
@@ -351,40 +365,40 @@ fn display_all_projects(notes: &[(Note, PathBuf)]) {
         );
     }
 
-    println!("\n💡 Usage examples:");
-    println!("  stash search \"+myapp\"          - Find notes for myapp project");
-    println!("  stash search \"+web +backend\"   - Find notes for web and backend");
-    println!("  stash search \"+web -+old\"      - Find web notes, exclude old project");
-    println!("  stash search --projects web,api  - Filter by specific projects");
+    println!("\n💡 usage examples:");
+    println!("  stash search \"+myapp\"          - find notes for myapp project");
+    println!("  stash search \"+web +backend\"   - find notes for web and backend");
+    println!("  stash search \"+web -+old\"      - find web notes, exclude old project");
+    println!("  stash search --projects web,api  - filter by specific projects");
 }
 
 fn display_no_results_help(_original_query: &str, parsed_query: &ParsedQuery) {
     let help_style = Style::new().bold().yellow();
     let suggestion_style = Style::new().cyan();
 
-    println!("No notes found matching your search criteria.");
+    println!("no notes found matching your search criteria.");
     println!();
 
     if !parsed_query.text_query.is_empty() {
-        println!("🔍 Text search: \"{}\"", parsed_query.text_query);
+        println!("🔍 text search: \"{}\"", parsed_query.text_query);
     }
 
     if !parsed_query.required_tags.is_empty() {
-        println!("🏷️  Required tags: {}", parsed_query.required_tags.iter().map(|t| format!("#{}", t)).collect::<Vec<_>>().join(" "));
+        println!("🏷️  required tags: {}", parsed_query.required_tags.iter().map(|t| format!("#{}", t)).collect::<Vec<_>>().join(" "));
     }
 
     if !parsed_query.required_projects.is_empty() {
-        println!("📁 Required projects: {}", parsed_query.required_projects.iter().map(|p| format!("+{}", p)).collect::<Vec<_>>().join(" "));
+        println!("📁 required projects: {}", parsed_query.required_projects.iter().map(|p| format!("+{}", p)).collect::<Vec<_>>().join(" "));
     }
 
     println!();
-    println!("{}", help_style.apply_to("💡 Search Tips:"));
-    println!("  • Use {} to search by tags", suggestion_style.apply_to("#tagname"));
-    println!("  • Use {} to search by projects", suggestion_style.apply_to("+projectname"));
-    println!("  • Use {} to exclude tags/projects", suggestion_style.apply_to("-#tag or -+project"));
-    println!("  • Combine: {} searches for rust notes in web project", suggestion_style.apply_to("\"#rust +web API\""));
-    println!("  • Try {} to see all available tags", suggestion_style.apply_to("stash search \"\" --list-tags"));
-    println!("  • Try {} to see all available projects", suggestion_style.apply_to("stash search \"\" --list-projects"));
+    println!("{}", help_style.apply_to("💡 search tips:"));
+    println!("  • use {} to search by tags", suggestion_style.apply_to("#tagname"));
+    println!("  • use {} to search by projects", suggestion_style.apply_to("+projectname"));
+    println!("  • use {} to exclude tags/projects", suggestion_style.apply_to("-#tag or -+project"));
+    println!("  • combine: {} searches for rust notes in web project", suggestion_style.apply_to("\"#rust +web API\""));
+    println!("  • try {} to see all available tags", suggestion_style.apply_to("stash search \"\" --list-tags"));
+    println!("  • try {} to see all available projects", suggestion_style.apply_to("stash search \"\" --list-projects"));
 }
 
 fn display_search_results_advanced(results: &[SearchResult], options: &SearchOptions) -> Result<(), StoreError> {
@@ -396,21 +410,21 @@ fn display_search_results_advanced(results: &[SearchResult], options: &SearchOpt
     let project_style = Style::new().bold().green();
     let prompt_style = Style::new().bold().magenta();
 
-    println!("\n{} Found {} note(s):",
+    println!("\n{} found {} note(s):",
         match_style.apply_to("🔍"),
         results.len()
     );
 
     if !options.query.is_empty() {
-        println!("   Query: \"{}\"", options.query);
+        println!("   query: \"{}\"", options.query);
     }
 
     if let Some(tags) = &options.filter_tags {
-        println!("   Tags filter: {}", tags);
+        println!("   tags filter: {}", tags);
     }
 
     if let Some(projects) = &options.filter_projects {
-        println!("   Projects filter: {}", projects);
+        println!("   projects filter: {}", projects);
     }
 
     println!();
@@ -418,45 +432,45 @@ fn display_search_results_advanced(results: &[SearchResult], options: &SearchOpt
     for (i, result) in results.iter().enumerate() {
         println!("{}. {}",
             i + 1,
-            title_style.apply_to(result.note.title.as_deref().unwrap_or("Untitled"))
+            title_style.apply_to(result.note.title.as_deref().unwrap_or("untitled"))
         );
 
         if result.title_match {
-            println!("   {} Title match", match_style.apply_to("✓"));
+            println!("   {} title match", match_style.apply_to("✓"));
         }
 
         if !result.tag_matches.is_empty() {
-            println!("   {} Tag matches: {}",
+            println!("   {} tag matches: {}",
                 match_style.apply_to("🏷️"),
                 result.tag_matches.iter().map(|t| tag_style.apply_to(format!("#{}", t)).to_string()).collect::<Vec<_>>().join(" ")
             );
         }
 
         if !result.project_matches.is_empty() {
-            println!("   {} Project matches: {}",
+            println!("   {} project matches: {}",
                 match_style.apply_to("📁"),
                 result.project_matches.iter().map(|p| project_style.apply_to(format!("+{}", p)).to_string()).collect::<Vec<_>>().join(" ")
             );
         }
 
         if !result.content_snippets.is_empty() {
-            println!("   Content matches:");
+            println!("   content matches:");
             for snippet in &result.content_snippets {
                 println!("   {}", snippet_style.apply_to(format!("  {}", snippet)));
             }
         }
 
-        println!("   Created: {}", result.note.created.format("%Y-%m-%d %H:%M"));
+        println!("   created: {}", result.note.created.format("%Y-%m-%d %H:%M"));
 
         if !result.note.tags.is_empty() {
-            println!("   All tags: {}",
+            println!("   all tags: {}",
                 result.note.tags.iter().map(|t| tag_style.apply_to(format!("#{}", t)).to_string()).collect::<Vec<_>>().join(" ")
             );
         }
 
         let projects = extract_projects(&result.note.content);
         if !projects.is_empty() {
-            println!("   All projects: {}",
+            println!("   all projects: {}",
                 projects.iter().map(|p| project_style.apply_to(format!("+{}", p)).to_string()).collect::<Vec<_>>().join(" ")
             );
         }
@@ -465,7 +479,7 @@ fn display_search_results_advanced(results: &[SearchResult], options: &SearchOpt
     }
 
     loop {
-        print!("{}", prompt_style.apply_to("Enter note number to open, 'h' for help, or 'q' to quit: "));
+        print!("{}", prompt_style.apply_to("enter note number to open, 'h' for help, or 'q' to quit: "));
         io::stdout().flush()?;
 
         let mut input = String::new();
@@ -484,10 +498,10 @@ fn display_search_results_advanced(results: &[SearchResult], options: &SearchOpt
                         let result = &results[index - 1];
                         display_note_content_advanced(&result.note, &result.file_path)?;
                     } else {
-                        println!("Invalid note number. Please try again.");
+                        println!("invalid note number. please try again.");
                     }
                 } else {
-                    println!("Invalid input. Enter a number, 'h' for help, or 'q' to quit.");
+                    println!("invalid input. enter a number, 'h' for help, or 'q' to quit.");
                 }
             }
         }
@@ -501,12 +515,12 @@ fn display_interactive_help() {
     let command_style = Style::new().bold().yellow();
 
     println!();
-    println!("{}", help_style.apply_to("🚀 Interactive Search Help"));
+    println!("{}", help_style.apply_to("🚀 interactive search help"));
     println!("{}", "─".repeat(50));
-    println!("• Enter a {} to open and read that note", command_style.apply_to("number"));
-    println!("• Press {} to return to search results", command_style.apply_to("Enter"));
-    println!("• Type {} to quit", command_style.apply_to("'q'"));
-    println!("• Type {} for this help", command_style.apply_to("'h'"));
+    println!("• enter a {} to open and read that note", command_style.apply_to("number"));
+    println!("• press {} to return to search results", command_style.apply_to("enter"));
+    println!("• type {} to quit", command_style.apply_to("'q'"));
+    println!("• type {} for this help", command_style.apply_to("'h'"));
     println!();
 }
 
@@ -521,13 +535,13 @@ fn display_note_content_advanced(note: &Note, file_path: &PathBuf) -> Result<(),
     term.clear_screen()?;
 
     println!("{}", separator_style.apply_to("═".repeat(80)));
-    println!("{}", title_style.apply_to(note.title.as_deref().unwrap_or("Untitled")));
-    println!("{}", separator_style.apply_to(format!("📄 File: {}", file_path.display())));
-    println!("{}", separator_style.apply_to(format!("📅 Created: {}", note.created.format("%Y-%m-%d %H:%M"))));
+    println!("{}", title_style.apply_to(note.title.as_deref().unwrap_or("untitled")));
+    println!("{}", separator_style.apply_to(format!("📄 file: {}", file_path.display())));
+    println!("{}", separator_style.apply_to(format!("📅 created: {}", note.created.format("%Y-%m-%d %H:%M"))));
 
     if !note.tags.is_empty() {
         println!("{} {}",
-            separator_style.apply_to("🏷️  Tags:"),
+            separator_style.apply_to("🏷️  tags:"),
             note.tags.iter().map(|t| tag_style.apply_to(format!("#{}", t)).to_string()).collect::<Vec<_>>().join(" ")
         );
     }
@@ -535,7 +549,7 @@ fn display_note_content_advanced(note: &Note, file_path: &PathBuf) -> Result<(),
     let projects = extract_projects(&note.content);
     if !projects.is_empty() {
         println!("{} {}",
-            separator_style.apply_to("📁 Projects:"),
+            separator_style.apply_to("📁 projects:"),
             projects.iter().map(|p| project_style.apply_to(format!("+{}", p)).to_string()).collect::<Vec<_>>().join(" ")
         );
     }
@@ -548,7 +562,7 @@ fn display_note_content_advanced(note: &Note, file_path: &PathBuf) -> Result<(),
     println!();
     println!("{}", separator_style.apply_to("═".repeat(80)));
 
-    print!("Press Enter to continue...");
+    print!("press enter to continue...");
     io::stdout().flush()?;
     let mut input = String::new();
     io::stdin().read_line(&mut input)?;

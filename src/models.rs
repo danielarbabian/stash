@@ -41,13 +41,13 @@ pub enum NoteSource {
 
 #[derive(Error, Debug)]
 pub enum NoteError {
-    #[error("IO error: {0}")]
+    #[error("io error: {0}")]
     Io(#[from] std::io::Error),
-    #[error("YAML parsing error: {0}")]
+    #[error("yaml parsing error: {0}")]
     Yaml(#[from] serde_yaml::Error),
-    #[error("Invalid frontmatter format")]
+    #[error("invalid frontmatter format")]
     InvalidFrontmatter,
-    #[error("Missing frontmatter")]
+    #[error("missing frontmatter")]
     MissingFrontmatter,
 }
 
