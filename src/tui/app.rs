@@ -41,8 +41,6 @@ pub struct App {
     pub ai_result_receiver: Option<mpsc::UnboundedReceiver<Result<String, String>>>,
     pub prompt_style_index: usize,
     pub custom_prompt_input: String,
-    pub ai_command_input: String,
-    pub ai_command_receiver: Option<mpsc::UnboundedReceiver<Result<String, String>>>,
 }
 
 impl Default for App {
@@ -80,8 +78,6 @@ impl Default for App {
             ai_result_receiver: None,
             prompt_style_index,
             custom_prompt_input: String::new(),
-            ai_command_input: String::new(),
-            ai_command_receiver: None,
         }
     }
 }
@@ -428,8 +424,7 @@ impl App {
 
     fn run_app(&mut self, terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Result<()> {
         loop {
-            self.check_ai_result();
-            self.check_ai_command_result();
+                    self.check_ai_result();
             terminal.draw(|f| self.ui(f))?;
 
             if crossterm::event::poll(std::time::Duration::from_millis(100))? {
@@ -451,184 +446,5 @@ impl App {
         self.render(f);
     }
 
-    pub fn start_ai_command(&mut self, input: String) {
-        if let Some(ai_client) = &self.ai_client {
-            if !ai_client.is_configured() {
-                self.status_message = Some("please configure your openai api key first (press 's' for settings)".to_string());
-                return;
-            }
 
-            self.ai_state = AiState::Processing;
-            self.mode = AppMode::AiCommand {
-                natural_input: input.clone(),
-                generated_command: None,
-                command_results: None,
-                awaiting_confirmation: false
-            };
-
-            let (tx, rx) = mpsc::unbounded_channel();
-            self.ai_command_receiver = Some(rx);
-
-            let ai_client = match AiClient::new() {
-                Ok(client) => client,
-                Err(e) => {
-                    self.ai_state = AiState::Error(format!("Failed to create AI client: {}", e));
-                    return;
-                }
-            };
-
-            tokio::spawn(async move {
-                let result = match ai_client.parse_natural_command(&input).await {
-                    Ok(command) => Ok(command),
-                    Err(e) => Err(e.to_string()),
-                };
-                let _ = tx.send(result);
-            });
-        } else {
-            self.status_message = Some("ai client not available. please check your configuration.".to_string());
-        }
-    }
-
-    pub fn check_ai_command_result(&mut self) {
-        if let Some(receiver) = &mut self.ai_command_receiver {
-            if let Ok(result) = receiver.try_recv() {
-                match result {
-                    Ok(generated_args) => {
-                        if let AppMode::AiCommand { natural_input, .. } = &self.mode {
-                            self.mode = AppMode::AiCommand {
-                                natural_input: natural_input.clone(),
-                                generated_command: Some(generated_args),
-                                command_results: None,
-                                awaiting_confirmation: true
-                            };
-                            self.ai_state = AiState::Success;
-                        }
-                    }
-                    Err(error) => {
-                        self.ai_state = AiState::Error(error);
-                    }
-                }
-                self.ai_command_receiver = None;
-            }
-        }
-    }
-
-    pub fn execute_ai_command(&mut self) {
-        if let AppMode::AiCommand { natural_input, generated_command: Some(ref command), .. } = self.mode.clone() {
-            // parse the generated arguments (no longer expect "stash search" prefix)
-            let args: Vec<&str> = command.split_whitespace().collect();
-            let results = self.execute_search_command(&args);
-
-            self.mode = AppMode::AiCommand {
-                natural_input,
-                generated_command: Some(format!("stash search {}", command)),
-                command_results: Some(results),
-                awaiting_confirmation: false
-            };
-        }
-    }
-
-    fn execute_search_command(&mut self, args: &[&str]) -> Vec<String> {
-        use crate::store::SearchOptions;
-
-        let mut query = String::new();
-        let mut filter_tags = None;
-        let mut filter_projects = None;
-        let mut list_tags = false;
-        let mut list_projects = false;
-        let mut case_sensitive = false;
-
-        let mut i = 0;
-        while i < args.len() {
-            match args[i] {
-                "--list-tags" => list_tags = true,
-                "--list-projects" => list_projects = true,
-                "--case-sensitive" => {
-                    case_sensitive = true;
-                    if i + 1 < args.len() {
-                        i += 1;
-                        query = args[i].trim_matches('"').to_string();
-                    }
-                }
-                "--filter-tags" => {
-                    if i + 1 < args.len() {
-                        i += 1;
-                        filter_tags = Some(args[i].to_string());
-                    }
-                }
-                "--filter-projects" => {
-                    if i + 1 < args.len() {
-                        i += 1;
-                        filter_projects = Some(args[i].to_string());
-                    }
-                }
-                arg => {
-                    if !query.is_empty() {
-                        query.push(' ');
-                    }
-                    query.push_str(arg.trim_matches('"'));
-                }
-            }
-            i += 1;
-        }
-
-        let search_options = SearchOptions {
-            query,
-            filter_tags,
-            filter_projects,
-            list_tags,
-            list_projects,
-            case_sensitive,
-        };
-
-        match crate::store::search_notes_return_results(search_options) {
-            Ok(results) => {
-                if results.is_empty() {
-                    vec!["No notes found matching your query.".to_string()]
-                } else {
-                    let mut formatted_results = vec![format!("🔍 Found {} note(s):", results.len())];
-
-                    for (i, result) in results.iter().enumerate() {
-                        let title = result.note.title.as_deref().unwrap_or("Untitled");
-
-                        let mut note_info = format!("\n{}. {}", i + 1, title);
-
-                        if !result.content_snippets.is_empty() {
-                            note_info.push_str("\n   Content matches:");
-                            for snippet in &result.content_snippets {
-                                note_info.push_str(&format!("\n     {}", snippet));
-                            }
-                        }
-
-                        note_info.push_str(&format!("\n   Created: {}", result.note.created.format("%Y-%m-%d %H:%M")));
-
-                        if !result.note.tags.is_empty() {
-                            note_info.push_str(&format!("\n   All tags: {}",
-                                result.note.tags.iter().map(|t| format!("#{}", t)).collect::<Vec<_>>().join(" ")));
-                        }
-
-                        let content_projects = crate::store::extract_projects(&result.note.content);
-                        if !content_projects.is_empty() {
-                            note_info.push_str(&format!("\n   All projects: {}",
-                                content_projects.iter().map(|p| format!("+{}", p)).collect::<Vec<_>>().join(" ")));
-                        }
-
-                        formatted_results.push(note_info);
-                    }
-
-                    formatted_results
-                }
-            }
-            Err(e) => {
-                vec![format!("Search error: {}", e)]
-            }
-        }
-    }
-
-    pub fn cancel_ai_command(&mut self) {
-        self.mode = AppMode::Home;
-        self.ai_state = AiState::Idle;
-        self.ai_command_input.clear();
-        self.ai_command_receiver = None;
-    }
 }

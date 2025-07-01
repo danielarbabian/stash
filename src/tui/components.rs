@@ -18,7 +18,6 @@ pub trait Renderer {
     fn render_help(&mut self, f: &mut Frame, area: Rect);
     fn render_settings(&mut self, f: &mut Frame, area: Rect);
     fn render_ai_rewrite(&mut self, f: &mut Frame, area: Rect, original_note_id: Uuid, rewritten_content: &Option<String>);
-    fn render_ai_command(&mut self, f: &mut Frame, area: Rect, natural_input: &str, generated_command: &Option<String>, command_results: &Option<Vec<String>>, awaiting_confirmation: bool);
 }
 
 impl Renderer for App {
@@ -33,9 +32,6 @@ impl Renderer for App {
             AppMode::Settings => self.render_settings(f, area),
             AppMode::AiRewrite { original_note_id, rewritten_content } => {
                 self.render_ai_rewrite(f, area, original_note_id, &rewritten_content)
-            }
-            AppMode::AiCommand { natural_input, generated_command, command_results, awaiting_confirmation } => {
-                self.render_ai_command(f, area, &natural_input, &generated_command, &command_results, awaiting_confirmation)
             }
         }
 
@@ -120,8 +116,6 @@ impl Renderer for App {
                 Span::raw("  "),
                 Span::styled("a", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
                 Span::raw(" add   "),
-                Span::styled("c", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-                Span::raw(" ai-cmd   "),
                 Span::styled("h", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
                 Span::raw(" help   "),
                 Span::styled("s", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
@@ -709,177 +703,7 @@ impl Renderer for App {
         f.render_widget(controls_widget, chunks[2]);
     }
 
-    fn render_ai_command(&mut self, f: &mut Frame, area: Rect, natural_input: &str, generated_command: &Option<String>, command_results: &Option<Vec<String>>, awaiting_confirmation: bool) {
-        let main_chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(3),
-                Constraint::Length(8),
-                Constraint::Min(0),
-                Constraint::Length(3),
-            ])
-            .split(area);
 
-        // header
-        let header_widget = Paragraph::new("🤖 ai natural language commands")
-            .block(Block::default().borders(Borders::ALL))
-            .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
-            .alignment(Alignment::Center);
-
-        f.render_widget(header_widget, main_chunks[0]);
-
-        let input_display = if self.ai_command_input.is_empty() && natural_input.is_empty() {
-            "Type your command in natural language...".to_string()
-        } else if !self.ai_command_input.is_empty() {
-            self.ai_command_input.clone()
-        } else {
-            natural_input.to_string()
-        };
-
-        let input_style = if self.ai_command_input.is_empty() && natural_input.is_empty() {
-            Style::default().fg(Color::DarkGray)
-        } else {
-            Style::default().fg(Color::White)
-        };
-
-        let input_lines = vec![
-            Line::from(""),
-            Line::from(vec![
-                Span::styled("Your Request: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-                Span::styled(input_display, input_style),
-            ]),
-            Line::from(""),
-            Line::from("Examples: \"find rust notes\", \"show my webapp project\", \"list all tags\""),
-        ];
-
-        let input_widget = Paragraph::new(input_lines)
-            .block(Block::default().borders(Borders::ALL).title("💬 Natural Language Input"))
-            .wrap(Wrap { trim: true });
-
-        f.render_widget(input_widget, main_chunks[1]);
-
-        // main content area - shows different things based on state (ai state, generated command, command results, awaiting confirmation)
-        match (&self.ai_state, generated_command, command_results, awaiting_confirmation) {
-            (AiState::Processing, _, _, _) => {
-                let processing_widget = Paragraph::new("🔄 processing your request...\n\nThe AI is translating your natural language into a stash command.\nThis should take just a moment!")
-                    .block(Block::default().borders(Borders::ALL).title("⏳ Processing"))
-                    .style(Style::default().fg(Color::Yellow))
-                    .alignment(Alignment::Center)
-                    .wrap(Wrap { trim: true });
-
-                f.render_widget(processing_widget, main_chunks[2]);
-            }
-            (AiState::Success, Some(command), None, true) => {
-                // show generated command for confirmation
-                let full_command = format!("stash search {}", command);
-                let confirmation_lines = vec![
-                    Line::from(""),
-                    Line::from("Generated Command:"),
-                    Line::from(""),
-                    Line::from(vec![
-                        Span::styled(full_command, Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
-                    ]),
-                    Line::from(""),
-                    Line::from(""),
-                    Line::from("Does this look correct?"),
-                    Line::from("Press Enter to execute or Esc to cancel"),
-                ];
-
-                let confirmation_widget = Paragraph::new(confirmation_lines)
-                    .block(Block::default().borders(Borders::ALL).title("✨ Command Generated"))
-                    .alignment(Alignment::Center)
-                    .wrap(Wrap { trim: true });
-
-                f.render_widget(confirmation_widget, main_chunks[2]);
-            }
-            (_, Some(command), Some(results), false) => {
-                // show command and results - command already includes "stash search" prefix from execute_ai_command
-                let results_chunks = Layout::default()
-                    .direction(Direction::Vertical)
-                    .constraints([
-                        Constraint::Length(4),
-                        Constraint::Min(0),
-                    ])
-                    .split(main_chunks[2]);
-
-                // command executed section
-                let command_lines = vec![
-                    Line::from(""),
-                    Line::from(vec![
-                        Span::styled("Executed: ", Style::default().fg(Color::Green)),
-                        Span::styled(command, Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
-                    ]),
-                ];
-
-                let command_widget = Paragraph::new(command_lines)
-                    .block(Block::default().borders(Borders::ALL).title("✅ Command Executed"));
-
-                f.render_widget(command_widget, results_chunks[0]);
-
-                // results section
-                let results_text = results.join("\n");
-                let results_widget = Paragraph::new(results_text)
-                    .block(Block::default().borders(Borders::ALL).title("📋 Results"))
-                    .wrap(Wrap { trim: true })
-                    .scroll((0, 0));
-
-                f.render_widget(results_widget, results_chunks[1]);
-            }
-            (AiState::Error(error), _, _, _) => {
-                let error_text = format!("❌ error: {}\n\nTry rephrasing your request or check your API configuration.", error);
-                let error_widget = Paragraph::new(error_text)
-                    .block(Block::default().borders(Borders::ALL).title("❌ error"))
-                    .style(Style::default().fg(Color::Red))
-                    .alignment(Alignment::Center)
-                    .wrap(Wrap { trim: true });
-
-                f.render_widget(error_widget, main_chunks[2]);
-            }
-            _ => {
-                // default help state
-                let help_lines = vec![
-                    Line::from(""),
-                    Line::from("🎯 how to use ai commands:"),
-                    Line::from(""),
-                    Line::from("1. Type your request in natural language above"),
-                    Line::from("2. AI will generate the appropriate stash command"),
-                    Line::from("3. Review and confirm the generated command"),
-                    Line::from("4. See the results instantly!"),
-                    Line::from(""),
-                    Line::from("💡 example requests:"),
-                    Line::from("• \"find all my rust notes\""),
-                    Line::from("• \"show notes about my webapp project\""),
-                    Line::from("• \"list all my tags\""),
-                    Line::from("• \"find notes with javascript but not old ones\""),
-                    Line::from("• \"show me everything about machine learning\""),
-                ];
-
-                let help_widget = Paragraph::new(help_lines)
-                    .block(Block::default().borders(Borders::ALL).title("💡 help"))
-                    .alignment(Alignment::Left);
-
-                f.render_widget(help_widget, main_chunks[2]);
-            }
-        }
-
-        // controls footer
-        let controls_text = if awaiting_confirmation {
-            "Enter=Execute command • Esc=Cancel"
-        } else if matches!(self.ai_state, AiState::Processing) {
-            "Processing... • Esc=Cancel"
-        } else if command_results.is_some() {
-            "Esc=New command"
-        } else {
-            "Type your request and press Enter • Esc=Back to home"
-        };
-
-        let controls_widget = Paragraph::new(controls_text)
-            .block(Block::default().borders(Borders::ALL))
-            .style(Style::default().fg(Color::DarkGray))
-            .alignment(Alignment::Center);
-
-        f.render_widget(controls_widget, main_chunks[3]);
-    }
 }
 
 impl App {

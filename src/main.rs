@@ -15,21 +15,24 @@ async fn main() {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Ui => {
+        None => {
             if let Err(e) = tui::run_tui() {
                 eprintln!("tui error: {}", e);
             }
         },
-        Commands::Add { content, title } => {
+        Some(Commands::Info) => {
+            print_info();
+        },
+        Some(Commands::Add { content, title }) => {
             match store::save_quick_note(content, title) {
                 Ok(()) => println!("note saved successfully"),
                 Err(e) => eprintln!("error saving note: {}", e),
             }
         },
-        Commands::New => {
+        Some(Commands::New) => {
             println!("creating new stash...");
         },
-        Commands::Search { query, tags, projects, list_tags, list_projects, case_sensitive } => {
+        Some(Commands::Search { query, tags, projects, list_tags, list_projects, case_sensitive }) => {
             let search_options = store::SearchOptions {
                 query,
                 filter_tags: tags,
@@ -43,12 +46,29 @@ async fn main() {
                 eprintln!("search error: {}", e);
             }
         },
-        Commands::Ai { query } => {
+        Some(Commands::Ai { query }) => {
             if let Err(e) = ai_search_cli(&query).await {
                 eprintln!("ai search error: {}", e);
             }
         },
     }
+}
+
+fn print_info() {
+    println!("stash - a command-line tool for managing your stash");
+    println!();
+    println!("Usage:");
+    println!("  stash              Launch the interactive TUI");
+    println!("  stash <COMMAND>    Run a specific command");
+    println!();
+    println!("Commands:");
+    println!("  info               Show this information");
+    println!("  add <content>      Add a new note");
+    println!("  new                Create a new stash");
+    println!("  search <query>     Search through your notes");
+    println!("  ai <query>         AI-powered natural language search");
+    println!();
+    println!("For detailed help on any command, use: stash <command> --help");
 }
 
 async fn ai_search_cli(natural_query: &str) -> Result<(), Box<dyn std::error::Error>> {

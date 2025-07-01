@@ -5,12 +5,12 @@ use clap::{Parser, Subcommand};
 #[command(about = "a command-line tool for managing your stash")]
 pub struct Cli {
     #[command(subcommand)]
-    pub command: Commands,
+    pub command: Option<Commands>,
 }
 
 #[derive(Subcommand)]
 pub enum Commands {
-    Ui,
+    Info,
     Add {
         #[arg(short, long)]
         title: Option<String>,

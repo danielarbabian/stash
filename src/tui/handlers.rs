@@ -11,7 +11,6 @@ pub trait InputHandler {
     fn handle_help_input(&mut self, key: KeyCode);
     fn handle_settings_input(&mut self, key: KeyCode, modifiers: KeyModifiers);
     fn handle_ai_rewrite_input(&mut self, key: KeyCode);
-    fn handle_ai_command_input(&mut self, key: KeyCode, modifiers: KeyModifiers);
 }
 
 impl InputHandler for App {
@@ -23,7 +22,6 @@ impl InputHandler for App {
             AppMode::Help => self.handle_help_input(key),
             AppMode::Settings => self.handle_settings_input(key, modifiers),
             AppMode::AiRewrite { .. } => self.handle_ai_rewrite_input(key),
-            AppMode::AiCommand { .. } => self.handle_ai_command_input(key, modifiers),
         }
     }
 
@@ -50,16 +48,7 @@ impl InputHandler for App {
                     self.custom_prompt_input.clear();
                 }
             }
-            KeyCode::Char('c') => {
-                self.mode = AppMode::AiCommand {
-                    natural_input: String::new(),
-                    generated_command: None,
-                    command_results: None,
-                    awaiting_confirmation: false
-                };
-                self.ai_command_input.clear();
-                self.ai_state = AiState::Idle;
-            }
+
             KeyCode::Char('r') => {
                 self.load_existing_notes();
                 self.status_message = Some("notes refreshed".to_string());
@@ -265,48 +254,5 @@ impl InputHandler for App {
         }
     }
 
-    fn handle_ai_command_input(&mut self, key: KeyCode, _modifiers: KeyModifiers) {
-        if let AppMode::AiCommand { awaiting_confirmation, .. } = &self.mode {
-            if *awaiting_confirmation {
-                // We're in confirmation mode - waiting for user to approve/reject the generated command
-                match key {
-                    KeyCode::Enter => {
-                        self.execute_ai_command();
-                    }
-                    KeyCode::Esc => {
-                        self.cancel_ai_command();
-                    }
-                    _ => {}
-                }
-            } else if matches!(self.ai_state, AiState::Processing) {
-                // We're processing - only allow cancel
-                match key {
-                    KeyCode::Esc => {
-                        self.cancel_ai_command();
-                    }
-                    _ => {}
-                }
-            } else {
-                // We're in input mode - typing the natural language query
-                match key {
-                    KeyCode::Esc => {
-                        self.cancel_ai_command();
-                    }
-                    KeyCode::Enter => {
-                        if !self.ai_command_input.trim().is_empty() {
-                            let input = self.ai_command_input.clone();
-                            self.start_ai_command(input);
-                        }
-                    }
-                    KeyCode::Char(c) => {
-                        self.ai_command_input.push(c);
-                    }
-                    KeyCode::Backspace => {
-                        self.ai_command_input.pop();
-                    }
-                    _ => {}
-                }
-            }
-        }
-    }
+
 }

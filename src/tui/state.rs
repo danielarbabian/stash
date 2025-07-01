@@ -8,12 +8,6 @@ pub enum AppMode {
     Help,
     Settings,
     AiRewrite { original_note_id: Uuid, rewritten_content: Option<String> },
-    AiCommand {
-        natural_input: String,
-        generated_command: Option<String>,
-        command_results: Option<Vec<String>>,
-        awaiting_confirmation: bool
-    },
 }
 
 #[derive(Debug, Clone)]
