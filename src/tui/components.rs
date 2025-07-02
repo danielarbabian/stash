@@ -14,6 +14,7 @@ pub trait Renderer {
     fn render(&mut self, f: &mut Frame);
     fn render_home(&mut self, f: &mut Frame, area: Rect);
     fn render_add_note(&mut self, f: &mut Frame, area: Rect);
+    fn render_edit_note(&mut self, f: &mut Frame, area: Rect, note_id: Uuid);
     fn render_view_note(&mut self, f: &mut Frame, area: Rect, note_id: Uuid);
     fn render_help(&mut self, f: &mut Frame, area: Rect);
     fn render_settings(&mut self, f: &mut Frame, area: Rect);
@@ -31,6 +32,7 @@ impl Renderer for App {
         match self.mode.clone() {
             AppMode::Home => self.render_home(f, area),
             AppMode::AddNote => self.render_add_note(f, area),
+            AppMode::EditNote(note_id) => self.render_edit_note(f, area, note_id),
             AppMode::ViewNote(note_id) => self.render_view_note(f, area, note_id),
             AppMode::Help => self.render_help(f, area),
             AppMode::Settings => self.render_settings(f, area),
@@ -271,22 +273,15 @@ impl Renderer for App {
     }
 
     fn render_add_note(&mut self, f: &mut Frame, area: Rect) {
-        let main_layout = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([
-                Constraint::Percentage(70),
-                Constraint::Percentage(30),
-            ])
-            .split(area);
-
-        let left_chunks = Layout::default()
+        let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Length(3),
                 Constraint::Min(0),
-                Constraint::Length(3),
+                Constraint::Length(4),
+                Constraint::Length(2),
             ])
-            .split(main_layout[0]);
+            .split(area);
 
         let title_active = matches!(self.active_field, ActiveField::Title);
         let title_style = if title_active {
@@ -295,18 +290,19 @@ impl Renderer for App {
                 EditorMode::Command => Style::default().fg(Color::Yellow),
             }
         } else {
-            Style::default()
+            Style::default().fg(Color::DarkGray)
         };
 
+        let title_hint = if title_active { " (editing)" } else { " (t to edit)" };
         let title_block = Block::default()
             .borders(Borders::ALL)
-            .title("title (t to edit)")
+            .title(format!("title{}", title_hint))
             .style(title_style);
 
         let title_input = Paragraph::new(self.title_input.as_str())
             .block(title_block);
 
-        f.render_widget(title_input, left_chunks[0]);
+        f.render_widget(title_input, chunks[0]);
 
         let content_active = matches!(self.active_field, ActiveField::Content);
         let content_style = if content_active {
@@ -315,18 +311,21 @@ impl Renderer for App {
                 EditorMode::Command => Style::default().fg(Color::Yellow),
             }
         } else {
-            Style::default()
+            Style::default().fg(Color::DarkGray)
         };
 
+        let content_hint = if content_active { " (editing)" } else { " (c to edit)" };
         let content_block = Block::default()
             .borders(Borders::ALL)
-            .title("content (c to edit)")
+            .title(format!("content{}", content_hint))
             .style(content_style);
 
         self.content_editor.set_block(content_block);
-        f.render_widget(&self.content_editor, left_chunks[1]);
+        f.render_widget(&self.content_editor, chunks[1]);
 
-        let mode_text = match self.editor_mode {
+        self.render_metadata_preview(f, chunks[2]);
+
+        let mode_indicator = match self.editor_mode {
             EditorMode::Insert => "insert",
             EditorMode::Command => "command",
         };
@@ -336,18 +335,85 @@ impl Renderer for App {
             EditorMode::Command => Style::default().fg(Color::Yellow),
         };
 
-        let status_text = format!(
-            "mode: {} | s:save | r:ai-rewrite | q:quit | i:insert | t:title | c:content | esc:command",
-            mode_text
-        );
+        let status_text = format!("{} • s:save • r:ai • q:quit • esc:command • i:insert", mode_indicator);
 
         let status_widget = Paragraph::new(status_text)
-            .block(Block::default().borders(Borders::ALL))
-            .style(mode_style);
+            .style(mode_style)
+            .alignment(Alignment::Center);
 
-        f.render_widget(status_widget, left_chunks[2]);
+        f.render_widget(status_widget, chunks[3]);
+    }
 
-        self.render_metadata_preview(f, main_layout[1]);
+    fn render_edit_note(&mut self, f: &mut Frame, area: Rect, _note_id: Uuid) {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(3),
+                Constraint::Min(0),
+                Constraint::Length(4),
+                Constraint::Length(2),
+            ])
+            .split(area);
+
+        let title_active = matches!(self.active_field, ActiveField::Title);
+        let title_style = if title_active {
+            match self.editor_mode {
+                EditorMode::Insert => Style::default().fg(Color::Cyan),
+                EditorMode::Command => Style::default().fg(Color::Yellow),
+            }
+        } else {
+            Style::default().fg(Color::DarkGray)
+        };
+
+        let title_hint = if title_active { " (editing)" } else { " (t to edit)" };
+        let title_block = Block::default()
+            .borders(Borders::ALL)
+            .title(format!("title{}", title_hint))
+            .style(title_style);
+
+        let title_input = Paragraph::new(self.title_input.as_str())
+            .block(title_block);
+
+        f.render_widget(title_input, chunks[0]);
+
+        let content_active = matches!(self.active_field, ActiveField::Content);
+        let content_style = if content_active {
+            match self.editor_mode {
+                EditorMode::Insert => Style::default().fg(Color::Cyan),
+                EditorMode::Command => Style::default().fg(Color::Yellow),
+            }
+        } else {
+            Style::default().fg(Color::DarkGray)
+        };
+
+        let content_hint = if content_active { " (editing)" } else { " (c to edit)" };
+        let content_block = Block::default()
+            .borders(Borders::ALL)
+            .title(format!("content{}", content_hint))
+            .style(content_style);
+
+        self.content_editor.set_block(content_block);
+        f.render_widget(&self.content_editor, chunks[1]);
+
+        self.render_metadata_preview(f, chunks[2]);
+
+        let mode_indicator = match self.editor_mode {
+            EditorMode::Insert => "insert",
+            EditorMode::Command => "command",
+        };
+
+        let mode_style = match self.editor_mode {
+            EditorMode::Insert => Style::default().fg(Color::Green),
+            EditorMode::Command => Style::default().fg(Color::Yellow),
+        };
+
+        let status_text = format!("{} • s:save • r:ai • q:quit • esc:command • i:insert", mode_indicator);
+
+        let status_widget = Paragraph::new(status_text)
+            .style(mode_style)
+            .alignment(Alignment::Center);
+
+        f.render_widget(status_widget, chunks[3]);
     }
 
     fn render_view_note(&mut self, f: &mut Frame, area: Rect, note_id: Uuid) {
@@ -355,9 +421,9 @@ impl Renderer for App {
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([
-                    Constraint::Length(5),
-                    Constraint::Min(0),
                     Constraint::Length(3),
+                    Constraint::Min(0),
+                    Constraint::Length(1),
                 ])
                 .split(area);
 
@@ -365,27 +431,25 @@ impl Renderer for App {
             let header_lines = vec![
                 Line::from(vec![
                     Span::styled(title, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-                ]),
-                Line::from(vec![
-                    Span::styled(format!("created: {}", note.created.format("%Y-%m-%d %H:%M")), Style::default().fg(Color::DarkGray)),
+                    Span::raw("  "),
+                    Span::styled(note.created.format("%Y-%m-%d %H:%M").to_string(), Style::default().fg(Color::DarkGray)),
                 ]),
             ];
 
             let header_widget = Paragraph::new(header_lines)
-                .block(Block::default().borders(Borders::ALL).title("note details"))
-                .alignment(Alignment::Left);
+                .block(Block::default().borders(Borders::ALL))
+                .alignment(Alignment::Center);
 
             f.render_widget(header_widget, chunks[0]);
 
             let content_widget = Paragraph::new(note.content.as_str())
-                .block(Block::default().borders(Borders::ALL).title("content"))
+                .block(Block::default().borders(Borders::ALL))
                 .wrap(Wrap { trim: true });
 
             f.render_widget(content_widget, chunks[1]);
 
-            let help_text = "press 'r' for ai rewrite • 'q' or esc to go back";
+            let help_text = "e:edit • r:ai • q:back";
             let help_widget = Paragraph::new(help_text)
-                .block(Block::default().borders(Borders::ALL))
                 .style(Style::default().fg(Color::DarkGray))
                 .alignment(Alignment::Center);
 
@@ -901,97 +965,62 @@ impl Renderer for App {
 
 impl App {
     fn render_metadata_preview(&mut self, f: &mut Frame, area: Rect) {
+        if area.height < 3 {
+            return;
+        }
+
         let chunks = Layout::default()
-            .direction(Direction::Vertical)
+            .direction(Direction::Horizontal)
             .constraints([
-                Constraint::Length(6),
-                Constraint::Length(6),
-                Constraint::Min(0),
+                Constraint::Percentage(50),
+                Constraint::Percentage(50),
             ])
             .split(area);
 
-        let tags_block = Block::default()
-            .borders(Borders::ALL)
-            .title("tags")
-            .style(Style::default().fg(Color::Blue));
-
-        let tags_content = if self.extracted_tags.is_empty() {
-            vec![
-                Line::from(""),
-                Line::from(Span::styled("no tags found", Style::default().fg(Color::DarkGray))),
-                Line::from(""),
-                Line::from(Span::styled("use #tagname in content", Style::default().fg(Color::DarkGray))),
-            ]
+        let tags_display = if self.extracted_tags.is_empty() {
+            "none".to_string()
         } else {
-            let mut lines = vec![Line::from("")];
-            for tag in &self.extracted_tags {
-                lines.push(Line::from(vec![
-                    Span::styled("#", Style::default().fg(Color::Blue)),
-                    Span::styled(tag, Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD)),
-                ]));
-            }
-            lines
+            self.extracted_tags.iter()
+                .map(|tag| format!("#{}", tag))
+                .collect::<Vec<_>>()
+                .join(" ")
         };
 
+        let tags_content = vec![
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("tags: ", Style::default().fg(Color::DarkGray)),
+                Span::styled(tags_display, Style::default().fg(Color::Blue)),
+            ]),
+        ];
+
         let tags_widget = Paragraph::new(tags_content)
-            .block(tags_block)
+            .block(Block::default().borders(Borders::ALL))
             .alignment(Alignment::Left);
 
         f.render_widget(tags_widget, chunks[0]);
 
-        let projects_block = Block::default()
-            .borders(Borders::ALL)
-            .title("projects")
-            .style(Style::default().fg(Color::Green));
-
-        let projects_content = if self.extracted_projects.is_empty() {
-            vec![
-                Line::from(""),
-                Line::from(Span::styled("no projects found", Style::default().fg(Color::DarkGray))),
-                Line::from(""),
-                Line::from(Span::styled("use +projectname in content", Style::default().fg(Color::DarkGray))),
-            ]
+        let projects_display = if self.extracted_projects.is_empty() {
+            "none".to_string()
         } else {
-            let mut lines = vec![Line::from("")];
-            for project in &self.extracted_projects {
-                lines.push(Line::from(vec![
-                    Span::styled("+", Style::default().fg(Color::Green)),
-                    Span::styled(project, Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
-                ]));
-            }
-            lines
+            self.extracted_projects.iter()
+                .map(|project| format!("+{}", project))
+                .collect::<Vec<_>>()
+                .join(" ")
         };
 
+        let projects_content = vec![
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("projects: ", Style::default().fg(Color::DarkGray)),
+                Span::styled(projects_display, Style::default().fg(Color::Green)),
+            ]),
+        ];
+
         let projects_widget = Paragraph::new(projects_content)
-            .block(projects_block)
+            .block(Block::default().borders(Borders::ALL))
             .alignment(Alignment::Left);
 
         f.render_widget(projects_widget, chunks[1]);
-
-        let help_block = Block::default()
-            .borders(Borders::ALL)
-            .title("tips")
-            .style(Style::default().fg(Color::Yellow));
-
-        let help_content = vec![
-            Line::from(""),
-            Line::from("type naturally:"),
-            Line::from(""),
-            Line::from(vec![
-                Span::raw("working on "),
-                Span::styled("#rust", Style::default().fg(Color::Blue)),
-                Span::raw(" "),
-                Span::styled("+webapp", Style::default().fg(Color::Green)),
-            ]),
-            Line::from(""),
-            Line::from("tags and projects will be"),
-            Line::from("extracted automatically"),
-        ];
-
-        let help_widget = Paragraph::new(help_content)
-            .block(help_block)
-            .alignment(Alignment::Left);
-
-        f.render_widget(help_widget, chunks[2]);
     }
 }

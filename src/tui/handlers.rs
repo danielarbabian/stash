@@ -7,6 +7,7 @@ pub trait InputHandler {
     fn handle_input(&mut self, key: KeyCode, modifiers: KeyModifiers);
     fn handle_home_input(&mut self, key: KeyCode);
     fn handle_add_note_input(&mut self, key: KeyCode, modifiers: KeyModifiers);
+    fn handle_edit_note_input(&mut self, key: KeyCode, modifiers: KeyModifiers);
     fn handle_view_note_input(&mut self, key: KeyCode);
     fn handle_help_input(&mut self, key: KeyCode);
     fn handle_settings_input(&mut self, key: KeyCode, modifiers: KeyModifiers);
@@ -22,6 +23,7 @@ impl InputHandler for App {
         match self.mode.clone() {
             AppMode::Home => self.handle_home_input(key),
             AppMode::AddNote => self.handle_add_note_input(key, modifiers),
+            AppMode::EditNote(_) => self.handle_edit_note_input(key, modifiers),
             AppMode::ViewNote(_) => self.handle_view_note_input(key),
             AppMode::Help => self.handle_help_input(key),
             AppMode::Settings => self.handle_settings_input(key, modifiers),
@@ -174,6 +176,11 @@ impl InputHandler for App {
         match key {
             KeyCode::Esc | KeyCode::Char('q') => {
                 self.mode = AppMode::Home;
+            }
+            KeyCode::Char('e') => {
+                if let AppMode::ViewNote(note_id) = self.mode {
+                    self.start_edit_note(note_id);
+                }
             }
             KeyCode::Char('r') => {
                 if let AppMode::ViewNote(note_id) = self.mode {
@@ -386,6 +393,70 @@ impl InputHandler for App {
                     }
                 }
                 _ => {}
+            }
+        }
+    }
+
+    fn handle_edit_note_input(&mut self, key: KeyCode, modifiers: KeyModifiers) {
+        match self.editor_mode {
+            EditorMode::Insert => {
+                match key {
+                    KeyCode::Esc => {
+                        self.editor_mode = EditorMode::Command;
+                    }
+                    _ => {
+                        match self.active_field {
+                            ActiveField::Content => {
+                                self.content_editor.input(crossterm::event::KeyEvent::new(key, modifiers));
+                                self.update_extracted_metadata();
+                            }
+                            ActiveField::Title => {
+                                match key {
+                                    KeyCode::Char(c) => {
+                                        self.title_input.push(c);
+                                    }
+                                    KeyCode::Backspace => {
+                                        self.title_input.pop();
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            EditorMode::Command => {
+                match key {
+                    KeyCode::Char('q') | KeyCode::Esc => {
+                        self.mode = AppMode::Home;
+                        self.editor_mode = EditorMode::Command;
+                        self.content_editor = tui_textarea::TextArea::default();
+                        self.title_input.clear();
+                        self.extracted_tags.clear();
+                        self.extracted_projects.clear();
+                    }
+                    KeyCode::Char('s') => {
+                        self.save_edited_note();
+                    }
+                    KeyCode::Char('r') => {
+                        if let AppMode::EditNote(note_id) = self.mode {
+                            self.start_ai_rewrite(note_id);
+                        }
+                    }
+                    KeyCode::Char('i') => {
+                        self.editor_mode = EditorMode::Insert;
+                    }
+                    KeyCode::Char('t') => {
+                        self.active_field = ActiveField::Title;
+                        self.editor_mode = EditorMode::Insert;
+                    }
+                    KeyCode::Char('c') => {
+                        self.active_field = ActiveField::Content;
+                        self.editor_mode = EditorMode::Insert;
+                    }
+                    _ => {}
+                }
             }
         }
     }

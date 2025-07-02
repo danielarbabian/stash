@@ -313,6 +313,63 @@ impl App {
         }
     }
 
+    pub fn start_edit_note(&mut self, note_id: uuid::Uuid) {
+        if let Some(note) = self.notes.iter().find(|n| n.id == note_id) {
+            self.mode = AppMode::EditNote(note_id);
+            self.editor_mode = EditorMode::Insert;
+            self.active_field = ActiveField::Content;
+
+            self.content_editor = tui_textarea::TextArea::from(note.content.lines().collect::<Vec<_>>());
+            self.title_input = note.title.clone().unwrap_or_default();
+
+            self.update_extracted_metadata();
+            self.status_message = Some("editing note".to_string());
+        }
+    }
+
+    pub fn save_edited_note(&mut self) {
+        if let AppMode::EditNote(note_id) = self.mode {
+            let content = self.content_editor.lines().join("\n");
+
+            if !content.trim().is_empty() {
+                if let Some(note) = self.notes.iter_mut().find(|n| n.id == note_id) {
+                    note.content = content;
+                    note.title = if self.title_input.is_empty() {
+                        None
+                    } else {
+                        Some(self.title_input.clone())
+                    };
+                    note.updated = Some(chrono::Utc::now());
+                    note.tags = crate::store::extract_tags(&note.content);
+                    note.projects = crate::store::extract_projects(&note.content);
+
+                    if let Some(home) = dirs::home_dir() {
+                        let notes_dir = home.join(".stash").join("notes");
+                        let file_path = notes_dir.join(format!("{}.md", note.id));
+
+                        match note.save_to_file(&file_path) {
+                            Ok(()) => {
+                                self.status_message = Some("note updated successfully".to_string());
+                                self.load_existing_notes();
+                                self.mode = AppMode::ViewNote(note_id);
+                                self.editor_mode = EditorMode::Command;
+                                self.content_editor = TextArea::default();
+                                self.title_input.clear();
+                                self.extracted_tags.clear();
+                                self.extracted_projects.clear();
+                            }
+                            Err(e) => {
+                                self.status_message = Some(format!("error saving note: {}", e));
+                            }
+                        }
+                    }
+                }
+            } else {
+                self.status_message = Some("cannot save empty note".to_string());
+            }
+        }
+    }
+
     pub fn set_api_key(&mut self, api_key: String) -> Result<(), String> {
         match self.config.set_api_key(api_key) {
             Ok(()) => {

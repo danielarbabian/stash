@@ -4,6 +4,7 @@ use uuid::Uuid;
 pub enum AppMode {
     Home,
     AddNote,
+    EditNote(Uuid),
     ViewNote(Uuid),
     Help,
     Settings,
