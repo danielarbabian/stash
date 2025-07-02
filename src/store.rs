@@ -570,18 +570,7 @@ fn display_note_content_advanced(note: &Note, file_path: &PathBuf) -> Result<(),
     Ok(())
 }
 
-pub fn search_notes(query: &str) -> Result<(), StoreError> {
-    let options = SearchOptions {
-        query: query.to_string(),
-        filter_tags: None,
-        filter_projects: None,
-        list_tags: false,
-        list_projects: false,
-        case_sensitive: false,
-    };
 
-    search_notes_advanced(options)
-}
 
 pub fn save_quick_note(content: String, title: Option<String>) -> Result<(), StoreError> {
     let stash_dir = get_stash_notes_dir()?;

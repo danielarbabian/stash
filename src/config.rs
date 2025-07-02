@@ -73,11 +73,7 @@ impl Config {
         self.openai_api_key.is_some() && !self.openai_api_key.as_ref().unwrap().is_empty()
     }
 
-    pub fn clear_api_key(&mut self) -> Result<(), ConfigError> {
-        self.openai_api_key = None;
-        self.ai_enabled = false;
-        self.save()
-    }
+
 
     pub fn set_prompt_style(&mut self, style: String) -> Result<(), ConfigError> {
         self.ai_prompt_style = style;

@@ -123,48 +123,7 @@ impl AiClient {
             .ok_or(AiError::InvalidResponse)
     }
 
-    pub async fn test_connection(&self) -> Result<(), AiError> {
-        if !self.is_configured() {
-            return Err(AiError::Config(ConfigError::ApiKeyNotSet));
-        }
 
-        let api_key = self.config.get_api_key()?;
-
-        let request = OpenAiRequest {
-            model: "gpt-4o-mini".to_string(),
-            messages: vec![
-                OpenAiMessage {
-                    role: "user".to_string(),
-                    content: "Hello, just testing the connection. Please respond with 'OK'.".to_string(),
-                },
-            ],
-            max_tokens: 10,
-            temperature: 0.0,
-        };
-
-        let response_future = self.client
-            .post("https://api.openai.com/v1/chat/completions")
-            .header("Authorization", format!("Bearer {}", api_key))
-            .header("Content-Type", "application/json")
-            .json(&request)
-            .send();
-
-        let response = timeout(Duration::from_secs(10), response_future)
-            .await
-            .map_err(|_| AiError::Timeout)?
-            .map_err(AiError::Http)?;
-
-        if !response.status().is_success() {
-            let status = response.status().as_u16();
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-            return Err(AiError::Api {
-                status,
-                message: error_text,
-            });
-        }
-
-        Ok(())
-    }
 
     pub async fn parse_natural_command(&self, input: &str) -> Result<String, AiError> {
         if !self.is_configured() {
@@ -245,7 +204,6 @@ Return ONLY the search arguments that would come after 'stash search'. Do not us
             .map(|choice| choice.message.content.trim().to_string())
             .ok_or(AiError::InvalidResponse)?;
 
-        // Clean up the args (remove any extra quotes or command prefixes)
         let cleaned_args = args
             .trim_start_matches('`')
             .trim_end_matches('`')

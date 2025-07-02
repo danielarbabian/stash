@@ -5,9 +5,6 @@ use clap::{Parser, Subcommand};
 #[command(about = "a command-line tool for managing your stash")]
 #[command(version)]
 pub struct Cli {
-    #[arg(short = 'v', long = "version", action = clap::ArgAction::Version)]
-    _version: bool,
-
     #[command(subcommand)]
     pub command: Option<Commands>,
 }
