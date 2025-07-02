@@ -25,6 +25,8 @@ pub struct App {
     pub mode: AppMode,
     pub editor_mode: EditorMode,
     pub notes: Vec<Note>,
+
+    pub all_notes: Vec<Note>,
     pub selected_note: usize,
     pub notes_list_state: ListState,
     pub content_editor: TextArea<'static>,
@@ -41,6 +43,19 @@ pub struct App {
     pub ai_result_receiver: Option<mpsc::UnboundedReceiver<Result<String, String>>>,
     pub prompt_style_index: usize,
     pub custom_prompt_input: String,
+    pub search_input: String,
+    pub tag_filter_input: String,
+    pub project_filter_input: String,
+    pub current_search: Option<String>,
+    pub current_tag_filter: Option<String>,
+    pub current_project_filter: Option<String>,
+    pub deletion_preference: DeletionType,
+}
+
+#[derive(Debug, Clone)]
+pub enum DeletionType {
+    Soft,
+    Hard,
 }
 
 impl Default for App {
@@ -62,6 +77,8 @@ impl Default for App {
             mode: AppMode::Home,
             editor_mode: EditorMode::Command,
             notes: Vec::new(),
+
+            all_notes: Vec::new(),
             selected_note: 0,
             notes_list_state,
             content_editor,
@@ -78,6 +95,13 @@ impl Default for App {
             ai_result_receiver: None,
             prompt_style_index,
             custom_prompt_input: String::new(),
+            search_input: String::new(),
+            tag_filter_input: String::new(),
+            project_filter_input: String::new(),
+            current_search: None,
+            current_tag_filter: None,
+            current_project_filter: None,
+            deletion_preference: DeletionType::Soft,
         }
     }
 }
@@ -90,7 +114,7 @@ impl App {
     }
 
     pub fn load_existing_notes(&mut self) {
-        self.notes.clear();
+        self.all_notes.clear();
         if let Some(home) = dirs::home_dir() {
             let notes_dir = home.join(".stash").join("notes");
             if let Ok(entries) = fs::read_dir(notes_dir) {
@@ -99,7 +123,7 @@ impl App {
                         if extension == "md" {
                             match Note::load_from_file(entry.path()) {
                                 Ok(note) => {
-                                    self.notes.push(note);
+                                    self.all_notes.push(note);
                                 }
                                 Err(e) => {
                                     eprintln!("Failed to load note {:?}: {}", entry.path(), e);
@@ -108,7 +132,46 @@ impl App {
                         }
                     }
                 }
-                self.notes.sort_by(|a, b| b.created.cmp(&a.created));
+                self.all_notes.sort_by(|a, b| b.created.cmp(&a.created));
+            }
+        }
+
+        self.apply_filters();
+    }
+
+    pub fn apply_filters(&mut self) {
+        self.notes = self.all_notes.clone();
+
+        self.notes.retain(|note| {
+            !note.tags.contains(&"deleted".to_string())
+        });
+
+        if let Some(ref search_term) = self.current_search {
+            if !search_term.trim().is_empty() {
+                self.notes.retain(|note| {
+                    let content_match = note.content.to_lowercase().contains(&search_term.to_lowercase());
+                    let title_match = note.title.as_ref()
+                        .map(|t| t.to_lowercase().contains(&search_term.to_lowercase()))
+                        .unwrap_or(false);
+                    content_match || title_match
+                });
+            }
+        }
+
+        if let Some(ref tag_filter) = self.current_tag_filter {
+            if !tag_filter.trim().is_empty() {
+                self.notes.retain(|note| {
+                    note.tags.iter().any(|tag| tag.to_lowercase().contains(&tag_filter.to_lowercase()))
+                });
+            }
+        }
+
+        if let Some(ref project_filter) = self.current_project_filter {
+            if !project_filter.trim().is_empty() {
+                self.notes.retain(|note| {
+                    let projects = store::extract_projects(&note.content);
+                    projects.iter().any(|project| project.to_lowercase().contains(&project_filter.to_lowercase()))
+                });
             }
         }
 
@@ -118,6 +181,73 @@ impl App {
         } else {
             self.notes_list_state.select(None);
         }
+    }
+
+    pub fn clear_filters(&mut self) {
+        self.current_search = None;
+        self.current_tag_filter = None;
+        self.current_project_filter = None;
+        self.search_input.clear();
+        self.tag_filter_input.clear();
+        self.project_filter_input.clear();
+        self.apply_filters();
+        self.status_message = Some("filters cleared".to_string());
+    }
+
+    pub fn confirm_delete_current_note(&mut self) {
+        if !self.notes.is_empty() && self.selected_note < self.notes.len() {
+            let note_id = self.notes[self.selected_note].id;
+            self.mode = AppMode::DeleteConfirm { note_id };
+            self.active_field = ActiveField::DeleteOption;
+        }
+    }
+
+    pub fn soft_delete_note(&mut self, note_id: uuid::Uuid) {
+        if let Some(note) = self.all_notes.iter_mut().find(|n| n.id == note_id) {
+            if !note.tags.contains(&"deleted".to_string()) {
+                note.tags.push("deleted".to_string());
+                note.updated = Some(chrono::Utc::now());
+
+                if let Some(home) = dirs::home_dir() {
+                    let notes_dir = home.join(".stash").join("notes");
+                    let file_path = notes_dir.join(format!("{}.md", note.id));
+                    if let Err(e) = note.save_to_file(&file_path) {
+                        self.status_message = Some(format!("error saving note: {}", e));
+                        return;
+                    }
+                }
+
+                self.status_message = Some("note moved to trash (soft delete)".to_string());
+                self.load_existing_notes();
+            }
+        }
+        self.mode = AppMode::Home;
+    }
+
+    pub fn hard_delete_note(&mut self, note_id: uuid::Uuid) {
+        if let Some(home) = dirs::home_dir() {
+            let notes_dir = home.join(".stash").join("notes");
+            let filename = format!("{}.md", note_id);
+            let file_path = notes_dir.join(filename);
+
+            match fs::remove_file(&file_path) {
+                Ok(()) => {
+                    self.status_message = Some("note permanently deleted".to_string());
+                    self.load_existing_notes();
+                }
+                Err(e) => {
+                    self.status_message = Some(format!("error deleting note: {}", e));
+                }
+            }
+        }
+        self.mode = AppMode::Home;
+    }
+
+    pub fn toggle_deletion_preference(&mut self) {
+        self.deletion_preference = match self.deletion_preference {
+            DeletionType::Soft => DeletionType::Hard,
+            DeletionType::Hard => DeletionType::Soft,
+        };
     }
 
     pub fn next_note(&mut self) {
@@ -142,6 +272,16 @@ impl App {
         let content = self.content_editor.lines().join("\n");
         self.extracted_tags = crate::store::extract_tags(&content);
         self.extracted_projects = crate::store::extract_projects(&content);
+    }
+
+    pub fn start_new_note(&mut self) {
+        self.mode = AppMode::AddNote;
+        self.editor_mode = EditorMode::Insert;
+        self.active_field = ActiveField::Content;
+        self.content_editor = tui_textarea::TextArea::default();
+        self.title_input.clear();
+        self.extracted_tags.clear();
+        self.extracted_projects.clear();
     }
 
     pub fn save_note(&mut self) {

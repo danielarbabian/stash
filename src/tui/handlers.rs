@@ -11,6 +11,10 @@ pub trait InputHandler {
     fn handle_help_input(&mut self, key: KeyCode);
     fn handle_settings_input(&mut self, key: KeyCode, modifiers: KeyModifiers);
     fn handle_ai_rewrite_input(&mut self, key: KeyCode);
+    fn handle_search_input(&mut self, key: KeyCode);
+    fn handle_tag_filter_input(&mut self, key: KeyCode);
+    fn handle_project_filter_input(&mut self, key: KeyCode);
+    fn handle_delete_confirm_input(&mut self, key: KeyCode);
 }
 
 impl InputHandler for App {
@@ -22,6 +26,10 @@ impl InputHandler for App {
             AppMode::Help => self.handle_help_input(key),
             AppMode::Settings => self.handle_settings_input(key, modifiers),
             AppMode::AiRewrite { .. } => self.handle_ai_rewrite_input(key),
+            AppMode::Search => self.handle_search_input(key),
+            AppMode::TagFilter => self.handle_tag_filter_input(key),
+            AppMode::ProjectFilter => self.handle_project_filter_input(key),
+            AppMode::DeleteConfirm { .. } => self.handle_delete_confirm_input(key),
         }
     }
 
@@ -48,7 +56,27 @@ impl InputHandler for App {
                     self.custom_prompt_input.clear();
                 }
             }
-
+            KeyCode::Char('/') => {
+                self.mode = AppMode::Search;
+                self.active_field = ActiveField::Search;
+                self.search_input.clear();
+            }
+            KeyCode::Char('t') => {
+                self.mode = AppMode::TagFilter;
+                self.active_field = ActiveField::TagFilter;
+                self.tag_filter_input.clear();
+            }
+            KeyCode::Char('p') => {
+                self.mode = AppMode::ProjectFilter;
+                self.active_field = ActiveField::ProjectFilter;
+                self.project_filter_input.clear();
+            }
+            KeyCode::Char('d') => {
+                self.confirm_delete_current_note();
+            }
+            KeyCode::Char('c') => {
+                self.clear_filters();
+            }
             KeyCode::Char('r') => {
                 self.load_existing_notes();
                 self.status_message = Some("notes refreshed".to_string());
@@ -98,6 +126,12 @@ impl InputHandler for App {
                             }
                             ActiveField::PromptStyle | ActiveField::CustomPrompt => {
                                 // prompt fields should not be active in addnote mode
+                            }
+                            ActiveField::Search | ActiveField::TagFilter | ActiveField::ProjectFilter => {
+                                // filter fields should not be active in addnote mode
+                            }
+                            ActiveField::DeleteOption => {
+                                // delete option field should not be active in addnote mode
                             }
                         }
                     }
@@ -254,5 +288,105 @@ impl InputHandler for App {
         }
     }
 
+    fn handle_search_input(&mut self, key: KeyCode) {
+        match key {
+            KeyCode::Esc => {
+                self.mode = AppMode::Home;
+                self.search_input.clear();
+            }
+            KeyCode::Enter => {
+                if self.search_input.trim().is_empty() {
+                    self.current_search = None;
+                } else {
+                    self.current_search = Some(self.search_input.clone());
+                }
+                self.apply_filters();
+                self.mode = AppMode::Home;
+                self.search_input.clear();
+            }
+            KeyCode::Char(c) => {
+                self.search_input.push(c);
+            }
+            KeyCode::Backspace => {
+                self.search_input.pop();
+            }
+            _ => {}
+        }
+    }
 
+    fn handle_tag_filter_input(&mut self, key: KeyCode) {
+        match key {
+            KeyCode::Esc => {
+                self.mode = AppMode::Home;
+                self.tag_filter_input.clear();
+            }
+            KeyCode::Enter => {
+                if self.tag_filter_input.trim().is_empty() {
+                    self.current_tag_filter = None;
+                } else {
+                    self.current_tag_filter = Some(self.tag_filter_input.clone());
+                }
+                self.apply_filters();
+                self.mode = AppMode::Home;
+                self.tag_filter_input.clear();
+            }
+            KeyCode::Char(c) => {
+                self.tag_filter_input.push(c);
+            }
+            KeyCode::Backspace => {
+                self.tag_filter_input.pop();
+            }
+            _ => {}
+        }
+    }
+
+    fn handle_project_filter_input(&mut self, key: KeyCode) {
+        match key {
+            KeyCode::Esc => {
+                self.mode = AppMode::Home;
+                self.project_filter_input.clear();
+            }
+            KeyCode::Enter => {
+                if self.project_filter_input.trim().is_empty() {
+                    self.current_project_filter = None;
+                } else {
+                    self.current_project_filter = Some(self.project_filter_input.clone());
+                }
+                self.apply_filters();
+                self.mode = AppMode::Home;
+                self.project_filter_input.clear();
+            }
+            KeyCode::Char(c) => {
+                self.project_filter_input.push(c);
+            }
+            KeyCode::Backspace => {
+                self.project_filter_input.pop();
+            }
+            _ => {}
+        }
+    }
+
+    fn handle_delete_confirm_input(&mut self, key: KeyCode) {
+        if let AppMode::DeleteConfirm { note_id } = self.mode {
+            match key {
+                KeyCode::Esc | KeyCode::Char('n') => {
+                    self.mode = AppMode::Home;
+                }
+                KeyCode::Tab | KeyCode::Up | KeyCode::Down => {
+                    self.toggle_deletion_preference();
+                }
+                KeyCode::Enter | KeyCode::Char('y') => {
+                    match self.deletion_preference {
+                        crate::tui::app::DeletionType::Soft => {
+                            self.soft_delete_note(note_id);
+                        }
+                        crate::tui::app::DeletionType::Hard => {
+                            self.hard_delete_note(note_id);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
 }

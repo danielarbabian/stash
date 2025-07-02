@@ -175,30 +175,27 @@ impl AiClient {
 
         let system_prompt = "You are a command parser for the 'stash' note-taking application. Your job is to convert natural language queries into valid stash search commands.
 
-IMPORTANT: Return ONLY the search arguments, NOT the full command. Do not include 'stash search' in your response.
+IMPORTANT: Return ONLY the search arguments, NOT the full command. Do not include 'stash search' in your response. Do not wrap your response in quotes.
 
 Available search patterns:
-- \"query\" - Search notes by content
-- \"#tag\" - Find notes with specific tags (e.g., #rust, #webdev)
-- \"+project\" - Find notes in specific projects (e.g., +myapp, +backend)
-- \"#tag +project\" - Combine tag and project filters
-- \"query #tag\" - Search text within tagged notes
-- \"-#oldtag\" - Exclude specific tags
-- \"--list-tags\" - Show all available tags
-- \"--list-projects\" - Show all available projects
-- \"--case-sensitive Query\" - Case-sensitive search
-
-Tags are prefixed with # (e.g., #rust, #javascript, #ideas)
-Projects are prefixed with + (e.g., +webapp, +mobile, +work)
+- text search: just the search term (e.g., rust, async await)
+- tag search: #tagname (e.g., #rust, #webdev)
+- project search: +projectname (e.g., +myapp, +backend)
+- combined: #tag +project text (e.g., #rust +webapp error handling)
+- exclude: -#tagname or -+projectname (e.g., -#old)
+- list options: --list-tags or --list-projects
+- case sensitive: --case-sensitive followed by search term
 
 Examples:
-- \"find rust notes\" → \"#rust\"
-- \"show me my webapp project\" → \"+webapp\"
-- \"notes about rust in my webapp\" → \"#rust +webapp\"
-- \"list all my tags\" → \"--list-tags\"
-- \"find notes with javascript but not old stuff\" → \"#javascript -#old\"
+- find rust notes → #rust
+- show me my webapp project → +webapp
+- notes about rust in my webapp → #rust +webapp
+- math notes → math
+- find my old javascript code → #javascript
+- list all my tags → --list-tags
+- find notes with javascript but not old stuff → #javascript -#old
 
-Return ONLY the search arguments that would come after 'stash search'. If the query is ambiguous, make your best guess.";
+Return ONLY the search arguments that would come after 'stash search'. Do not use quotes around your response.";
 
         let user_prompt = format!("Convert this natural language query to stash search arguments: {}", input);
 
@@ -254,6 +251,10 @@ Return ONLY the search arguments that would come after 'stash search'. If the qu
             .trim_end_matches('`')
             .trim_start_matches("stash search ")
             .trim_start_matches("search ")
+            .trim_start_matches('"')
+            .trim_end_matches('"')
+            .trim_start_matches('\'')
+            .trim_end_matches('\'')
             .trim()
             .to_string();
 

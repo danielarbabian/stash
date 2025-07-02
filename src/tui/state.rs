@@ -8,6 +8,10 @@ pub enum AppMode {
     Help,
     Settings,
     AiRewrite { original_note_id: Uuid, rewritten_content: Option<String> },
+    Search,
+    TagFilter,
+    ProjectFilter,
+    DeleteConfirm { note_id: Uuid },
 }
 
 #[derive(Debug, Clone)]
@@ -23,6 +27,10 @@ pub enum ActiveField {
     ApiKey,
     PromptStyle,
     CustomPrompt,
+    Search,
+    TagFilter,
+    ProjectFilter,
+    DeleteOption,
 }
 
 #[derive(Debug, Clone)]
